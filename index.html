@@ -98,7 +98,7 @@
 
     <form id="paymentForm">
 
-      <label for="phone">M-Pesa Phone Number</label>
+      <label for="phone">Enter Phone Number</label>
 
       <input
         type="tel"
@@ -135,7 +135,6 @@
     const payButton = document.getElementById("payButton");
 
 
-    // Convert 07..., +254..., or 254... to 254...
     function formatPhone(phone) {
 
       phone = phone.trim().replace(/\s+/g, "");
@@ -155,7 +154,6 @@
     form.addEventListener("submit", async function (event) {
 
       event.preventDefault();
-
 
       const phoneInput =
         document.getElementById("phone").value;
@@ -193,13 +191,11 @@
 
         const data = await response.json();
 
-
         console.log("STK Push Response:", data);
 
 
         if (response.ok && data.ResponseCode === "0") {
 
-          // Clear phone number and amount
           document.getElementById("phone").value = "";
           document.getElementById("amount").value = "";
 
