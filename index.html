@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>M-Pesa STK Push Test</title>
+  <title>M-Pesa STK Push</title>
 
   <style>
     * {
@@ -103,7 +103,7 @@
       <input
         type="tel"
         id="phone"
-        placeholder="254712345678"
+        placeholder="0712345678 or 254712345678"
         required
       >
 
@@ -135,16 +135,39 @@
     const payButton = document.getElementById("payButton");
 
 
+    // Convert 07..., +254..., or 254... to 254...
+    function formatPhone(phone) {
+
+      phone = phone.trim().replace(/\s+/g, "");
+
+      if (phone.startsWith("0")) {
+        return "254" + phone.substring(1);
+      }
+
+      if (phone.startsWith("+254")) {
+        return phone.substring(1);
+      }
+
+      return phone;
+    }
+
+
     form.addEventListener("submit", async function (event) {
 
       event.preventDefault();
 
-      const phone = document.getElementById("phone").value.trim();
-      const amount = document.getElementById("amount").value.trim();
+
+      const phoneInput =
+        document.getElementById("phone").value;
+
+      const phone = formatPhone(phoneInput);
+
+      const amount =
+        document.getElementById("amount").value.trim();
 
 
       message.className = "loading";
-      message.innerText = "Sending STK Push...";
+      message.innerText = "Sending payment request...";
 
       payButton.disabled = true;
       payButton.innerText = "Processing...";
@@ -176,11 +199,15 @@
 
         if (response.ok && data.ResponseCode === "0") {
 
+          // Clear phone number and amount
+          document.getElementById("phone").value = "";
+          document.getElementById("amount").value = "";
+
           message.className = "success";
 
           message.innerText =
-            "STK Push request sent successfully!\n\n" +
-            "Check your phone.";
+            "STK Push initiated successfully!\n\n" +
+            "Check your phone and enter your M-Pesa PIN.";
 
         } else {
 
