@@ -36,12 +36,6 @@
       margin-bottom: 25px;
     }
 
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: bold;
-    }
-
     input {
       width: 100%;
       padding: 14px;
@@ -98,16 +92,12 @@
 
     <form id="paymentForm">
 
-      <label for="phone">Enter Phone Number</label>
-
       <input
         type="tel"
         id="phone"
-        placeholder="0712345678 or 254712345678"
+        placeholder="Enter phone number"
         required
       >
-
-      <label for="amount">Amount (KES)</label>
 
       <input
         type="number"
@@ -135,6 +125,7 @@
     const payButton = document.getElementById("payButton");
 
 
+    // Convert 07..., +254..., or 254... into 254...
     function formatPhone(phone) {
 
       phone = phone.trim().replace(/\s+/g, "");
@@ -155,9 +146,7 @@
 
       event.preventDefault();
 
-      const phoneInput =
-        document.getElementById("phone").value;
-
+      const phoneInput = document.getElementById("phone").value;
       const phone = formatPhone(phoneInput);
 
       const amount =
@@ -196,6 +185,7 @@
 
         if (response.ok && data.ResponseCode === "0") {
 
+          // Clear the inputs immediately after STK Push is initiated
           document.getElementById("phone").value = "";
           document.getElementById("amount").value = "";
 
@@ -244,4 +234,4 @@
   </script>
 
 </body>
-</html>
+      </html>
