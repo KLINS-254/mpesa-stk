@@ -1,24 +1,67 @@
 export default async function handler(req, res) {
-  // Only allow POST requests
   if (req.method !== "POST") {
     return res.status(405).json({
+      success: false,
       message: "Method not allowed"
     });
   }
 
   try {
-    const { phone, amount } = req.body;
+    const { phone, amount } = req.body || {};
 
-    // Validate input
     if (!phone || !amount) {
       return res.status(400).json({
-        message: "Phone number and amount are required"
+        success: false,
+        message: "Phone number and amount are required."
       });
     }
 
-    // Get access token
+    const normalizedPhone = String(phone).trim();
+    const paymentAmount = Number(amount);
+
+    if (!/^254[17]\d{8}$/.test(normalizedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid Kenyan phone number, e.g. 254712345678."
+      });
+    }
+
+    if (!Number.isInteger(paymentAmount) || paymentAmount < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount must be a whole number greater than zero."
+      });
+    }
+
+    const {
+      CONSUMER_KEY,
+      CONSUMER_SECRET,
+      SHORTCODE,
+      PASSKEY,
+      CALLBACK_URL
+    } = process.env;
+
+    const missing = [];
+
+    if (!CONSUMER_KEY) missing.push("CONSUMER_KEY");
+    if (!CONSUMER_SECRET) missing.push("CONSUMER_SECRET");
+    if (!SHORTCODE) missing.push("SHORTCODE");
+    if (!PASSKEY) missing.push("PASSKEY");
+    if (!CALLBACK_URL) missing.push("CALLBACK_URL");
+
+    if (missing.length) {
+      console.error("Missing environment variables:", missing);
+
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration is incomplete.",
+        missing
+      });
+    }
+
+    // Step 1: Generate Daraja access token.
     const auth = Buffer.from(
-      `${process.env.CONSUMER_KEY}:${process.env.CONSUMER_SECRET}`
+      `${CONSUMER_KEY}:${CONSUMER_SECRET}`
     ).toString("base64");
 
     const tokenResponse = await fetch(
@@ -26,27 +69,52 @@ export default async function handler(req, res) {
       {
         method: "GET",
         headers: {
-          Authorization: `Basic ${auth}`
+          Authorization: `Basic ${auth}`,
+          Accept: "application/json"
         }
       }
     );
 
-    const tokenData = await tokenResponse.json();
+    const tokenText = await tokenResponse.text();
 
-    if (!tokenData.access_token) {
-      return res.status(500).json({
-        message: "Failed to generate access token",
-        error: tokenData
+    let tokenData;
+
+    try {
+      tokenData = JSON.parse(tokenText);
+    } catch {
+      console.error(
+        "Daraja token response was not valid JSON. HTTP status:",
+        tokenResponse.status,
+        "Response:",
+        tokenText.slice(0, 500)
+      );
+
+      return res.status(502).json({
+        success: false,
+        stage: "access_token",
+        message: "Daraja returned an empty or invalid token response.",
+        darajaHttpStatus: tokenResponse.status
       });
     }
 
-    const accessToken = tokenData.access_token;
+    if (!tokenResponse.ok || !tokenData.access_token) {
+      console.error(
+        "Daraja token request failed:",
+        tokenResponse.status,
+        tokenData
+      );
 
-    // STK Push details
-    const shortcode = process.env.SHORTCODE;
-    const passkey = process.env.PASSKEY;
+      return res.status(502).json({
+        success: false,
+        stage: "access_token",
+        message: "Could not obtain a Daraja access token.",
+        darajaHttpStatus: tokenResponse.status,
+        details: tokenData
+      });
+    }
 
-    // Create timestamp
+    // Step 2: Build STK Push password and timestamp.
+    const shortcode = String(SHORTCODE);
     const now = new Date();
 
     const timestamp =
@@ -57,50 +125,81 @@ export default async function handler(req, res) {
       String(now.getMinutes()).padStart(2, "0") +
       String(now.getSeconds()).padStart(2, "0");
 
-    // Generate password
     const password = Buffer.from(
-      shortcode + passkey + timestamp
+      shortcode + PASSKEY + timestamp
     ).toString("base64");
 
-    // Send STK Push request
+    // Step 3: Request the STK Push.
     const stkResponse = await fetch(
       "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
       {
         method: "POST",
-
         headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json"
+          Authorization: `Bearer ${tokenData.access_token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json"
         },
-
         body: JSON.stringify({
           BusinessShortCode: shortcode,
           Password: password,
           Timestamp: timestamp,
           TransactionType: "CustomerPayBillOnline",
-          Amount: Number(amount),
-          PartyA: phone,
+          Amount: paymentAmount,
+          PartyA: normalizedPhone,
           PartyB: shortcode,
-          PhoneNumber: phone,
-          CallBackURL: process.env.CALLBACK_URL,
-          AccountReference: "TestPayment",
-          TransactionDesc: "STK Push Test"
+          PhoneNumber: normalizedPhone,
+          CallBackURL: CALLBACK_URL,
+          AccountReference: "JabereInterest",
+          TransactionDesc: "Payment"
         })
       }
     );
 
-    const stkData = await stkResponse.json();
+    const stkText = await stkResponse.text();
 
-    return res.status(stkResponse.status).json(stkData);
+    let stkData;
+
+    try {
+      stkData = JSON.parse(stkText);
+    } catch {
+      console.error(
+        "Daraja STK response was not valid JSON. HTTP status:",
+        stkResponse.status,
+        "Response:",
+        stkText.slice(0, 500)
+      );
+
+      return res.status(502).json({
+        success: false,
+        stage: "stk_push",
+        message: "Daraja returned an empty or invalid STK Push response.",
+        darajaHttpStatus: stkResponse.status
+      });
+    }
+
+    if (!stkResponse.ok) {
+      console.error("Daraja STK request failed:", stkResponse.status, stkData);
+
+      return res.status(502).json({
+        success: false,
+        stage: "stk_push",
+        message: "Daraja rejected the STK Push request.",
+        darajaHttpStatus: stkResponse.status,
+        details: stkData
+      });
+    }
+
+    console.log("Daraja STK response:", stkData);
+
+    return res.status(200).json(stkData);
 
   } catch (error) {
-
-    console.error(error);
+    console.error("STK Push backend error:", error);
 
     return res.status(500).json({
-      message: "Server error",
+      success: false,
+      message: "The server encountered an error.",
       error: error.message
     });
-
   }
-        }
+  }
