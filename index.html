@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>M-Pesa STK Push</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 400px;
+      background: white;
+      padding: 30px 25px;
+      border-radius: 12px;
+      box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #16a34a;
+      color: white;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #message {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 14px;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
+    .success {
+      color: green;
+    }
+
+    .error {
+      color: red;
+    }
+
+    .loading {
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+
+    <h2>Pay with M-Pesa</h2>
+
+    <form id="paymentForm">
+
+      <input
+        type="tel"
+        id="phone"
+        placeholder="Enter phone number"
+        required
+      >
+
+      <input
+        type="number"
+        id="amount"
+        placeholder="Enter amount"
+        min="1"
+        required
+      >
+
+      <button type="submit" id="payButton">
+        Pay with M-Pesa
+      </button>
+
+    </form>
+
+    <div id="message"></div>
+
+  </div>
+
+
+  <script>
+
+    const form = document.getElementById("paymentForm");
+    const message = document.getElementById("message");
+    const payButton = document.getElementById("payButton");
+
+
+    // Convert 07..., +254..., or 254... into 254...
+    function formatPhone(phone) {
+
+      phone = phone.trim().replace(/\s+/g, "");
+
+      if (phone.startsWith("0")) {
+        return "254" + phone.substring(1);
+      }
+
+      if (phone.startsWith("+254")) {
+        return phone.substring(1);
+      }
+
+      return phone;
+    }
+
+
+    form.addEventListener("submit", async function (event) {
+
+      event.preventDefault();
+
+      const phoneInput = document.getElementById("phone").value;
+      const phone = formatPhone(phoneInput);
+
+      const amount =
+        document.getElementById("amount").value.trim();
+
+
+      message.className = "loading";
+      message.innerText = "Sending payment request...";
+
+      payButton.disabled = true;
+      payButton.innerText = "Processing...";
+
+
+      try {
+
+        const response = await fetch("/api/stkpush", {
+
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            phone: phone,
+            amount: amount
+          })
+
+        });
+
+
+        const responseText = await response.text();
+        let data;
+
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            `Server returned an empty or invalid response (HTTP ${response.status}). Check Vercel Logs.`
+          );
+        }
+
+        console.log("STK Push Response:", data);
+
+
+        if (response.ok && data.ResponseCode === "0") {
+
+          // Clear the inputs immediately after STK Push is initiated
+          document.getElementById("phone").value = "";
+          document.getElementById("amount").value = "";
+
+          message.className = "success";
+
+          message.innerText =
+            "STK Push initiated successfully!\n\n" +
+            "Check your phone and enter your M-Pesa PIN.";
+
+        } else {
+
+          message.className = "error";
+
+          const errorMessage =
+            data.errorMessage ||
+            data.error ||
+            data.message ||
+            data.ResponseDescription ||
+            JSON.stringify(data, null, 2);
+
+          message.innerText =
+            "STK Push Failed:\n\n" +
+            errorMessage;
+
+        }
+
+
+      } catch (error) {
+
+        console.error("Connection Error:", error);
+
+        message.className = "error";
+
+        message.innerText =
+          "Connection Error:\n\n" +
+          error.message;
+
+      }
+
+
+      payButton.disabled = false;
+      payButton.innerText = "Pay with M-Pesa";
+
+    });
+
+  </script>
+
+</body>
+      </html>
